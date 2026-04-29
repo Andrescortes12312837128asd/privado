@@ -1,4 +1,6 @@
 
+sudo python3 Chimera_Core_Apex.py
+
 
 sudo nano /etc/security/limits.conf
 
