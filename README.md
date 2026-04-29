@@ -1,4 +1,43 @@
 
+/////////////////NUEVO///////////////
+
+
+sudo apt update
+sudo apt install tor
+
+
+sudo nano /etc/tor/torrc
+
+SocksPort 9050
+ControlPort 9051
+HashedControlPassword 16:YOUR_HASHED_PASSWORD
+
+
+tor --hash-password YOUR_PASSWORD
+
+
+sudo systemctl restart tor
+
+
+sudo apt install proxychains4
+
+
+sudo nano /etc/proxychains4.conf
+
+
+# dynamic_chain
+# random_chain
+# strict_chain
+
+socks5 127.0.0.1 9050
+
+
+
+proxychains4 python3 Chimera_Core_Apex.py
+
+
+/////////////////////////////////////////
+
 sudo python3 Chimera_Core_Apex.py
 
 
