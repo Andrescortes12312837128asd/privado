@@ -2,7 +2,7 @@ sudo sysctl -w net.core.rmem_max=134217728
 sudo sysctl -w net.core.wmem_max=134217728
 sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 
-
+sudo python3 Chimera_Core.py
 
 Paso 1: Preparar el Campo de Batalla (Tu Sistema Kali)
 Antes de descargar el arma, necesitas que tu sistema esté preparado para la guerra. Abre una terminal en Kali Linux y ejecuta estos comandos:
