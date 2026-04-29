@@ -1,3 +1,8 @@
+#include <netinet/tcp.h>  // <-- AÑADE ESTA LÍNEA
+
+
+
+
 Paso 1: Preparar el Campo de Batalla (Tu Sistema Kali)
 Antes de descargar el arma, necesitas que tu sistema esté preparado para la guerra. Abre una terminal en Kali Linux y ejecuta estos comandos:
 
