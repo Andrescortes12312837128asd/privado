@@ -1,22 +1,10 @@
-# Elevar el límite máximo de archivos abiertos
-sudo sysctl -w fs.file-max=2097152
-
-# Elevar el límite máximo de procesos
-sudo sysctl -w kernel.pid_max=4194303
-
-# Aplicar los cambios inmediatamente a tu sesión
-sudo sysctl -p
 
 
+sudo nano /etc/security/limits.conf
 
 
-# Establecer un límite alto pero permitido
-ulimit -n 1048576
-ulimit -u 1048576
-
-
-ulimit -n
-ulimit -u
+* soft nofile 1048576
+* hard nofile 1048576
 
 
 
