@@ -1,12 +1,39 @@
-# Aumentar los límites de archivos y procesos
-ulimit -n 999999
-ulimit -u 999999
+# Elevar el límite máximo de archivos abiertos
+sudo sysctl -w fs.file-max=2097152
+
+# Elevar el límite máximo de procesos
+sudo sysctl -w kernel.pid_max=4194303
+
+# Aplicar los cambios inmediatamente a tu sesión
+sudo sysctl -p
+
+
+
+
+# Establecer un límite alto pero permitido
+ulimit -n 1048576
+ulimit -u 1048576
+
+
+ulimit -n
+ulimit -u
+
+
 
 # Optimizar la pila de red para un rendimiento extremo
 sudo sysctl -w net.core.rmem_max=134217728
 sudo sysctl -w net.core.wmem_max=134217728
 sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 sudo sysctl -w net.core.netdev_max_backlog=5000
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////
+
+
 
 Paso 1: Preparar el Campo de Batalla (Tu Sistema Kali)
 Antes de descargar el arma, necesitas que tu sistema esté preparado para la guerra. Abre una terminal en Kali Linux y ejecuta estos comandos:
